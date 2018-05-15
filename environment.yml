@@ -1,4 +1,4 @@
-name: adversial-object-segmentation
+name: adverserial-object-segmentation
 channels:
   - soumith
   - defaults
