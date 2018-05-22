@@ -34,31 +34,18 @@ class AdversarialExperiment:
         torch.manual_seed(1)
 
         # Load model
-        self.model = models.squeezenet1_1(pretrained=True)
+        self.model = models.vgg16(pretrained=True)
 
         # Get Image Net labels
         self.labels = {int(key): value for (key, value)
                        in requests.get(LABELS_URL).json().items()}
 
-        # From https://github.com/pytorch/examples/blob/409a7262dcfa7906a92aeac25ee7d413baa88b67/imagenet/main.py#L94-L95
-        self.normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        )
-
         # From https://github.com/pytorch/examples/blob/409a7262dcfa7906a92aeac25ee7d413baa88b67/imagenet/main.py#L108-L113
         self.preprocess = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            self.normalize
+            transforms.ToTensor()
         ])
-
-        # From https://discuss.pytorch.org/t/simple-way-to-inverse-transform-normalization/4821/4
-        self.inv_normalize = transforms.Normalize(
-            mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.255],
-            std=[1 / 0.229, 1 / 0.224, 1 / 0.255]
-        )
 
     def main(self):
         # Get cat image
@@ -75,8 +62,7 @@ class AdversarialExperiment:
 
     def attack_random_noise(self, img):
         noise = torch.rand(img.size())
-        self.normalize(noise[0])
-        noise = noise * 0.2
+        noise = noise * 0.07
         return noise
 
     def print_top_k(self, output, k):
@@ -91,8 +77,7 @@ class AdversarialExperiment:
         return self.labels[label]
 
     # As accuracy is not high enough unnormalization creates some minor artifacts
-    def unnormalize_image(self, img):
-        img = self.inv_normalize(img)
+    def clamp_image(self, img):
         img = torch.clamp(img, 0.0, 1.0)
         return img
 
@@ -101,7 +86,7 @@ class AdversarialExperiment:
         img_adv = img_org + noise
 
         # factor to scale up noise
-        self.unnormalize_image(noise[0])
+        self.clamp_image(noise[0])
         scale_factor = 1 / noise[0].numpy().max()
 
         # Forwardpass + softmax
@@ -118,11 +103,11 @@ class AdversarialExperiment:
         # Create plot
         fig, ax = plt.subplots(1, 3, figsize=(15, 10))
         label_org, label_adv = self.get_label(output_org), self.get_label(output_adv)
-        ax[0].imshow(tensor_to_img(self.unnormalize_image(img_org[0])))
+        ax[0].imshow(tensor_to_img(self.clamp_image(img_org[0])))
         ax[0].set_title('Original image: {}'.format(label_org))
         ax[1].imshow(tensor_to_img(noise[0] * scale_factor))
-        ax[1].set_title('Attacking noise')
-        ax[2].imshow(tensor_to_img(self.unnormalize_image(img_adv[0])))
+        ax[1].set_title('Attacking noise (x{0:4.2f})'.format(scale_factor))
+        ax[2].imshow(tensor_to_img(self.clamp_image(img_adv[0])))
         ax[2].set_title('Adversarial example: {}'.format(label_adv))
 
         for i in range(3):
