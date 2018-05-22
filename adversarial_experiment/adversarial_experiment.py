@@ -1,16 +1,19 @@
 # Sources:
 # http://blog.outcome.io/pytorch-quick-start-classifying-an-image/
 # https://github.com/Lextal/adv-attacks-pytorch-101
-
+import argparse
 import io
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
 from PIL import Image
-
+import time
 import torch
+
 import torch.nn.functional as F
 import torchvision.transforms as T
+from torch import nn
+from torch.autograd.gradcheck import zero_gradients
 from torchvision import models, transforms
 
 
@@ -19,22 +22,26 @@ IMG_URL = 'https://s3.amazonaws.com/outcome-blog/wp-content/uploads/2017/02/2519
 
 
 def tensor_to_img(tensor):
-    return np.asarray(T.ToPILImage()(tensor))
+    return T.ToPILImage()(tensor)
 
 
 def show_tensor_as_img(tensor):
-    to_pil = T.ToPILImage()
-    to_pil(tensor).show()
+    tensor_to_img(tensor).show()
 
 
 class AdversarialExperiment:
 
     def __init__(self):
+        # Start time
+        self.start_time = time.time()
+
         # Set manual seed for stable results
         torch.manual_seed(1)
 
         # Load model
         self.model = models.vgg16(pretrained=True)
+        self.loss = nn.CrossEntropyLoss()
+        self.model.eval()
 
         # Get Image Net labels
         self.labels = {int(key): value for (key, value)
@@ -47,7 +54,12 @@ class AdversarialExperiment:
             transforms.ToTensor()
         ])
 
-    def main(self):
+        # List of possible attacks
+        self.attacks = {"random_noise": self.attack_random_noise,
+                        "FGSM": self.attack_FGSM,
+                        "FGSM_target": self.attack_FGSM_target}
+
+    def main(self, attack="random_noise"):
         # Get cat image
         response = requests.get(IMG_URL)
         img_pil = Image.open(io.BytesIO(response.content))
@@ -56,14 +68,81 @@ class AdversarialExperiment:
         img_tensor = self.preprocess(img_pil)
         img_tensor.unsqueeze_(0)
 
-        noise = self.attack_random_noise(img_tensor)
+        # Create
+        perturbation = self.attacks[attack](img_tensor)
 
-        self.evaluate_results(img_tensor, noise)
+        self.evaluate_results(img_tensor, perturbation)
 
     def attack_random_noise(self, img):
+        """
+        Creates random noise as attack to img
+        :param img: input image
+        :return: random noise
+        """
         noise = torch.rand(img.size())
         noise = noise * 0.07
         return noise
+
+    def attack_FGSM(self, img, target=-1):
+        """
+        Using the Fast Gradient Sign Method (FGSM) to attack image img by adding stepwise
+        the sign of the image gradient.
+
+        For target attack the gradient gets subtracted to reach the desired class.
+
+        :param img: input image
+        :param target: target class. -1 for non target attack
+        :return: perturbation
+        """
+
+        # Definitions
+        steps = 10
+        step_alpha = 0.001
+        eps = 2 * 8 / 225.
+
+        # Define label variable. Target for target attack.
+        if target == -1:
+            # Perform forwardpass to get prediction of the original image
+            output = self.model(img)
+            label = torch.Tensor([output.data.numpy().argmax()]).long()
+        else:
+            label = torch.Tensor([target]).long()
+
+        # Clone so img gets not manipulated
+        img_adv = img.clone()
+        img_adv.requires_grad_()
+
+        for step in range(steps):
+            zero_gradients(img_adv)
+            out = self.model(img_adv)
+
+            # Calculate loss, gradient and normed gradient based on the sign of the gradient
+            _loss = self.loss(out, label)
+            _loss.backward()
+            normed_grad = step_alpha * torch.sign(img_adv.grad.data)
+
+            # Add/Subtract perturbation
+            if target == -1:
+                step_adv = img_adv.data + normed_grad
+            else:
+                step_adv = img_adv.data - normed_grad
+
+            # Postprocessing perturbation
+            adv = step_adv - img
+            adv = torch.clamp(adv, -eps, eps)  # Max eps range
+            result = img + adv
+            result = torch.clamp(result, 0.0, 1.0)  # Image range
+            adv = result - img
+
+            # Set adversarial image as new input
+            img_adv.data = result
+
+            print("Step: {0}, Loss: {1:.2f}, Top1: {2}".format(step, _loss, self.labels[out.data.numpy().argmax()]))
+
+        return adv.detach()
+
+    def attack_FGSM_target(self, img):
+        return self.attack_FGSM(img, 875)
 
     def print_top_k(self, output, k):
         top_k = output.topk(k)
@@ -76,18 +155,18 @@ class AdversarialExperiment:
         label = output.data.max(1)[1].cpu().numpy()[0]
         return self.labels[label]
 
-    # As accuracy is not high enough unnormalization creates some minor artifacts
-    def clamp_image(self, img):
+    @staticmethod
+    def clamp_image(img):
         img = torch.clamp(img, 0.0, 1.0)
         return img
 
-    def evaluate_results(self, img_org, noise):
+    def evaluate_results(self, img_org, perturbation):
         # Create adversarial image
-        img_adv = img_org + noise
+        img_adv = img_org + perturbation
 
-        # factor to scale up noise
-        self.clamp_image(noise[0])
-        scale_factor = 1 / noise[0].numpy().max()
+        # factor to scale up perturbation
+        self.clamp_image(perturbation[0])
+        scale_factor = 1 / perturbation[0].numpy().max()
 
         # Forwardpass + softmax
         output_org = self.model(img_org)
@@ -100,12 +179,19 @@ class AdversarialExperiment:
         print("\n=== Top 5 adversarial image ===")
         self.print_top_k(output_adv, 5)
 
+        # Timing
+        end_time = time.time()
+        minutes = int((end_time - self.start_time) / 60)
+        seconds = (end_time - self.start_time) - minutes * 60
+        print('\n' + '=' * 31)
+        print("Execution time: {0} min {1:.0f} sec".format(minutes, seconds))
+
         # Create plot
         fig, ax = plt.subplots(1, 3, figsize=(15, 10))
         label_org, label_adv = self.get_label(output_org), self.get_label(output_adv)
         ax[0].imshow(tensor_to_img(self.clamp_image(img_org[0])))
         ax[0].set_title('Original image: {}'.format(label_org))
-        ax[1].imshow(tensor_to_img(noise[0] * scale_factor))
+        ax[1].imshow(tensor_to_img(perturbation[0] * scale_factor))
         ax[1].set_title('Attacking noise (x{0:4.2f})'.format(scale_factor))
         ax[2].imshow(tensor_to_img(self.clamp_image(img_adv[0])))
         ax[2].set_title('Adversarial example: {}'.format(label_adv))
@@ -117,5 +203,17 @@ class AdversarialExperiment:
 
 
 if __name__ == '__main__':
+    # Init
     adv_experiment = AdversarialExperiment()
-    adv_experiment.main()
+
+    # Arguments
+    parser = argparse.ArgumentParser(description='Adversarial Experiments')
+    parser.add_argument('--attack', type=str, default="random_noise", metavar='ATT',
+                        help='Attacks: '
+                             + ' | '.join(adv_experiment.attacks)
+                             + ' (default: random_noise)')
+
+    args = parser.parse_args()
+
+    # Execute attack
+    adv_experiment.main(args.attack)
