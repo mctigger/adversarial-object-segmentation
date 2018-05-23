@@ -1,6 +1,6 @@
 [submodule "modules/pytorch-mask_rcnn"]
 	path = modules/pytorch-mask_rcnn
-	url = git@github.com:multimodallearning/pytorch-mask-rcnn.git
+	url = https://github.com/multimodallearning/pytorch-mask-rcnn.git
 [submodule "modules/cocoapi"]
 	path = modules/cocoapi
-	url = git@github.com:cocodataset/cocoapi.git
+	url = https://github.com/cocodataset/cocoapi.git
