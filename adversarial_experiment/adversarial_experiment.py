@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
 from torch import nn
+from torch.autograd import Variable
 from torch.autograd.gradcheck import zero_gradients
 from torchvision import models, transforms
 
@@ -21,12 +22,12 @@ LABELS_URL = 'https://s3.amazonaws.com/outcome-blog/imagenet/labels.json'
 IMG_URL = 'https://s3.amazonaws.com/outcome-blog/wp-content/uploads/2017/02/25192225/cat.jpg'
 
 
-def tensor_to_img(tensor):
-    return T.ToPILImage()(tensor)
+def variable_to_img(var):
+    return T.ToPILImage()(var.data)
 
 
-def show_tensor_as_img(tensor):
-    tensor_to_img(tensor).show()
+def show_variable_as_img(var):
+    variable_to_img(var).show()
 
 
 class AdversarialExperiment:
@@ -100,17 +101,22 @@ class AdversarialExperiment:
         step_alpha = 0.001
         eps = 2 * 8 / 225.
 
+        label = torch.zeros(1, 1)
+        img = Variable(img)
+        label = Variable(label)
+
         # Define label variable. Target for target attack.
         if target == -1:
             # Perform forwardpass to get prediction of the original image
             output = self.model(img)
-            label = torch.Tensor([output.data.numpy().argmax()]).long()
+
+            label.data = output.max(1)[1].data
         else:
-            label = torch.Tensor([target]).long()
+            label.data = torch.Tensor([target]).type(torch.LongTensor)
 
         # Clone so img gets not manipulated
         img_adv = img.clone()
-        img_adv.requires_grad_()
+        img_adv.requires_grad = True
 
         for step in range(steps):
             zero_gradients(img_adv)
@@ -128,18 +134,18 @@ class AdversarialExperiment:
                 step_adv = img_adv.data - normed_grad
 
             # Postprocessing perturbation
-            adv = step_adv - img
+            adv = step_adv - img.data
             adv = torch.clamp(adv, -eps, eps)  # Max eps range
-            result = img + adv
+            result = img.data + adv
             result = torch.clamp(result, 0.0, 1.0)  # Image range
-            adv = result - img
+            adv = result - img.data
 
             # Set adversarial image as new input
             img_adv.data = result
 
-            print("Step: {0}, Loss: {1:.2f}, Top1: {2}".format(step, _loss, self.labels[out.data.numpy().argmax()]))
+            print("Step: {0}, Loss: {1:.2f}, Top1: {2}".format(step, _loss.data[0], self.labels[out.data.numpy().argmax()]))
 
-        return adv.detach()
+        return adv
 
     def attack_FGSM_target(self, img):
         return self.attack_FGSM(img, 875)
@@ -147,8 +153,8 @@ class AdversarialExperiment:
     def print_top_k(self, output, k):
         top_k = output.topk(k)
         for i in range(0, k):
-            label_id = top_k[1].data[0][i].item()
-            confidence = top_k[0].data[0][i].item()
+            label_id = top_k[1].data[0][i]
+            confidence = top_k[0].data[0][i]
             print("{0: >5.2f}% - {1}".format(confidence * 100, self.labels[label_id]))
 
     def get_label(self, output):
@@ -162,11 +168,13 @@ class AdversarialExperiment:
 
     def evaluate_results(self, img_org, perturbation):
         # Create adversarial image
-        img_adv = img_org + perturbation
+        img_adv = Variable(img_org + perturbation)
+        img_org = Variable(img_org)
+        perturbation = Variable(perturbation)
 
         # factor to scale up perturbation
         self.clamp_image(perturbation[0])
-        scale_factor = 1 / perturbation[0].numpy().max()
+        scale_factor = 1 / perturbation[0].data.numpy().max()
 
         # Forwardpass + softmax
         output_org = self.model(img_org)
@@ -189,11 +197,11 @@ class AdversarialExperiment:
         # Create plot
         fig, ax = plt.subplots(1, 3, figsize=(15, 10))
         label_org, label_adv = self.get_label(output_org), self.get_label(output_adv)
-        ax[0].imshow(tensor_to_img(self.clamp_image(img_org[0])))
+        ax[0].imshow(variable_to_img(self.clamp_image(img_org[0])))
         ax[0].set_title('Original image: {}'.format(label_org))
-        ax[1].imshow(tensor_to_img(perturbation[0] * scale_factor))
+        ax[1].imshow(variable_to_img(perturbation[0] * scale_factor))
         ax[1].set_title('Attacking noise (x{0:4.2f})'.format(scale_factor))
-        ax[2].imshow(tensor_to_img(self.clamp_image(img_adv[0])))
+        ax[2].imshow(variable_to_img(self.clamp_image(img_adv[0])))
         ax[2].set_title('Adversarial example: {}'.format(label_adv))
 
         for i in range(3):
