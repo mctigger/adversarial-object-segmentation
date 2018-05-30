@@ -19,4 +19,4 @@
 (cd ./modules/cocoapi/PythonAPI && make;)
 
 echo "================================================================= \n";
-echo "\033[33mNow you only need to visit https://drive.google.com/open?id=1LXUgC2IZUYNEoXr05tdqyKFZY0pZyPDc and download mask_rcnn_coco.pth into ./modules/pytorch-mask_rcnn \033[0m";
+echo "\033[33mNow you only need to visit https://drive.google.com/open?id=1LXUgC2IZUYNEoXr05tdqyKFZY0pZyPDc and download mask_rcnn_coco.pth into ./modules/pytorch_mask_rcnn \033[0m";
