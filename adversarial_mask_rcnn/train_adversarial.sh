@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-
-python adversial_attack.py --dataset=../data --model=./mask_rcnn_coco.pth
+cd ..
+python adversarial_mask_rcnn/adversarial_attack.py --dataset=./data --target TRUE

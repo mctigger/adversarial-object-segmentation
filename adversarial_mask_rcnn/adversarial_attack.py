@@ -1,13 +1,15 @@
 import os
+import sys
+sys.path.append('modules/pytorch_mask_rcnn')
 
 import numpy as np
 
 import torch
 from torch.autograd import Variable
 from torch.autograd.gradcheck import zero_gradients
-from modules.pytorch_mask_rcnn.model import Dataset, unmold_image, MaskRCNN, compute_losses
-from modules.pytorch_mask_rcnn.visualize import display_instances
-from modules.pytorch_mask_rcnn.coco import CocoDataset, CocoConfig
+from model import Dataset, unmold_image, MaskRCNN, compute_losses
+from visualize import display_instances
+from coco import CocoDataset, CocoConfig
 
 
 # Root directory of the project
@@ -31,7 +33,7 @@ def img_to_np(img):
     return img
 
 
-def train_adversarial(model, train_dataset, epochs, layers):
+def train_adversarial(model, train_dataset, epochs, layers, target_attack=False):
     """Train the model.
     train_dataset, val_dataset: Training and validation Dataset objects.
     learning_rate: The learning rate to train with
@@ -71,10 +73,10 @@ def train_adversarial(model, train_dataset, epochs, layers):
 
     for epoch in range(model.epoch + 1, epochs + 1):
         # Training
-        train_adversarial_batch(model, train_generator)
+        train_adversarial_batch(model, train_generator, target_attack=target_attack)
 
 
-def train_adversarial_batch(model, datagenerator):
+def train_adversarial_batch(model, datagenerator, target_attack=False):
     for inputs in datagenerator:
         images = inputs[0]
         image_metas = inputs[1]
@@ -96,10 +98,12 @@ def train_adversarial_batch(model, datagenerator):
             gt_boxes = gt_boxes.cuda()
             gt_masks = gt_masks.cuda()
 
+        # SETTINGS
         steps = 10
+        max_perturbation = 15
 
         # Wrap in variables
-        img = images.clone()
+        images_orig = images.clone()
         images = Variable(images, requires_grad=True)
         rpn_match = Variable(rpn_match)
         rpn_bbox = Variable(rpn_bbox)
@@ -125,10 +129,18 @@ def train_adversarial_batch(model, datagenerator):
             # Calculate gradient
             grad = images.grad * 10000
 
+            # Clamp max perturbation per step
+            grad = torch.clamp(grad, -max_perturbation/steps, max_perturbation/steps)
+
             # Add/Subtract perturbation
-            orig_images = unmold_image_tensor(images.data + grad.data, model.config)
-            step_adv = torch.clamp(orig_images, 0, 255)
-            images_data = mold_image_tensor(step_adv, model.config)
+            if target_attack:
+                images_tmp = unmold_image_tensor(images.data - grad.data, model.config)
+            else:
+                images_tmp = unmold_image_tensor(images.data + grad.data, model.config)
+
+            # Clamp to reasonable image vavlues
+            images_tmp = torch.clamp(images_tmp, 0, 255)
+            images_data = mold_image_tensor(images_tmp, model.config)
 
             # Set adversarial image as new input
             images.data = images_data
@@ -152,7 +164,7 @@ def train_adversarial_batch(model, datagenerator):
                        'teddy bear', 'hair drier', 'toothbrush']
 
         # Run detection
-        image = unmold_image(img_to_np(img[0]), model.config)
+        image = unmold_image(img_to_np(images_orig[0]), model.config)
         results = model.detect([image])
 
         # Visualize results
@@ -201,10 +213,15 @@ if __name__ == '__main__':
                         default=DEFAULT_LOGS_DIR,
                         metavar="/path/to/logs/",
                         help='Logs and checkpoints directory (default=logs/)')
-    parser.add_argument('--download', required=False,
+    # parser.add_argument('--download', required=False,
+    #                     default=False,
+    #                     metavar="<True|False>",
+    #                     help='Automatically download and unzip MS-COCO files (default=False)',
+    #                     type=bool)
+    parser.add_argument('--target', required=False,
                         default=False,
                         metavar="<True|False>",
-                        help='Automatically download and unzip MS-COCO files (default=False)',
+                        help='Perform a target attack (default=False)',
                         type=bool)
 
     args = parser.parse_args()
@@ -212,7 +229,7 @@ if __name__ == '__main__':
     print("Dataset: ", args.dataset)
     print("Year: ", args.year)
     print("Logs: ", args.logs)
-    print("Auto Download: ", args.download)
+    # print("Auto Download: ", args.download)
 
     config = CocoConfig()
     config.display()
@@ -230,14 +247,18 @@ if __name__ == '__main__':
     model.load_weights(model_path)
 
     dataset_train = CocoDataset()
-    dataset_train.load_coco(args.dataset, "train", year=args.year, auto_download=args.download)
-    dataset_train.load_coco(args.dataset, "valminusminival", year=args.year, auto_download=args.download)
+    #dataset_train.load_coco(args.dataset, "minival", year=args.year, auto_download=args.download)  # Uncomment to get all coco images
+    if args.target:
+        dataset_train.load_coco(args.dataset, "adversarial_attack_target", year=2014, auto_download=False)
+    else:
+        dataset_train.load_coco(args.dataset, "adversarial_attack", year=2014, auto_download=False)
     dataset_train.prepare()
 
     train_adversarial(
         model,
         dataset_train,
-        epochs=160,
-        layers='all'
+        epochs=1,
+        layers='all',
+        target_attack=args.target
     )
 
