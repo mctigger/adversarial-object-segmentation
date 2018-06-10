@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 (
  arch=sm_61
- cd ./modules/pytorch-mask_rcnn/
+ cd ./modules/pytorch_mask_rcnn/
  cd nms/src/cuda/
  nvcc -c -o nms_kernel.cu.o nms_kernel.cu -x cu -Xcompiler -fPIC -arch=$arch
  cd ../../
