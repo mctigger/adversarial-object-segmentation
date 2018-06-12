@@ -99,7 +99,7 @@ def train_adversarial_batch(model, datagenerator, target_attack=False):
             gt_masks = gt_masks.cuda()
 
         # SETTINGS
-        steps = 20
+        steps = 10
         max_perturbation = 15
 
         # Wrap in variables
