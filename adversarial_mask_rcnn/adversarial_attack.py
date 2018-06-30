@@ -5,6 +5,7 @@ sys.path.append('modules/pytorch_mask_rcnn')
 import numpy as np
 
 import torch
+import matplotlib.pyplot as plt
 from torch.autograd import Variable
 from torch.autograd.gradcheck import zero_gradients
 from model import Dataset, unmold_image, MaskRCNN, compute_losses
@@ -33,7 +34,7 @@ def img_to_np(img):
     return img
 
 
-def train_adversarial(model, train_dataset, epochs, layers, target_attack=False):
+def train_adversarial(model, train_dataset, epochs, layers, target_attack=False, show_perturbation=False):
     """Train the model.
     train_dataset, val_dataset: Training and validation Dataset objects.
     learning_rate: The learning rate to train with
@@ -73,10 +74,10 @@ def train_adversarial(model, train_dataset, epochs, layers, target_attack=False)
 
     for epoch in range(model.epoch + 1, epochs + 1):
         # Training
-        train_adversarial_batch(model, train_generator, target_attack=target_attack)
+        train_adversarial_batch(model, train_generator, target_attack=target_attack, show_perturbation=show_perturbation)
 
 
-def train_adversarial_batch(model, datagenerator, target_attack=False):
+def train_adversarial_batch(model, datagenerator, target_attack=False, show_perturbation=False):
     for inputs in datagenerator:
         images = inputs[0]
         image_metas = inputs[1]
@@ -138,7 +139,7 @@ def train_adversarial_batch(model, datagenerator, target_attack=False):
             else:
                 images_tmp = unmold_image_tensor(images.data + grad.data, model.config)
 
-            # Clamp to reasonable image vavlues
+            # Clamp to reasonable image values
             images_tmp = torch.clamp(images_tmp, 0, 255)
             images_data = mold_image_tensor(images_tmp, model.config)
 
@@ -164,20 +165,37 @@ def train_adversarial_batch(model, datagenerator, target_attack=False):
                        'teddy bear', 'hair drier', 'toothbrush']
 
         # Run detection
-        image = unmold_image(img_to_np(images_orig[0]), model.config)
-        results = model.detect([image])
+        image_org = unmold_image(img_to_np(images_orig[0]), model.config)
+        results = model.detect([image_org])
 
         # Visualize results
         r = results[0]
-        display_instances(image, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
+        display_instances(image_org, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
 
         # Run detection
-        image = unmold_image(img_to_np(a), model.config)
-        results = model.detect([image])
+        image_adv = unmold_image(img_to_np(a), model.config)
+        results = model.detect([image_adv])
 
         # Visualize results
         r = results[0]
-        display_instances(image, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
+        display_instances(image_adv, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
+
+        # Visualize perturbation
+        if show_perturbation:
+            image_tmp = image_adv.astype(np.int16)
+            perturbation = image_tmp - image_org
+            perturbation.clip(0, 255)
+            scale_factor = 255/perturbation.max()
+
+            # Show Plot
+            _, ax = plt.subplots(1, figsize=(16, 16))
+            height, width = perturbation.shape[:2]
+            ax.set_ylim(height + 10, -10)
+            ax.set_xlim(-10, width + 10)
+            ax.axis('off')
+            ax.set_title('Attacking noise (x{0:4.2f})'.format(scale_factor))
+            ax.imshow(perturbation * scale_factor)
+            plt.show()
 
 
 def mold_image_tensor(images, config):
@@ -223,12 +241,19 @@ if __name__ == '__main__':
                         metavar="<True|False>",
                         help='Perform a target attack (default=False)',
                         type=bool)
+    parser.add_argument('--show-perturbation', required=False,
+                        default=False,
+                        metavar="<True|False>",
+                        help='Shows scaled perturbation (default=False)',
+                        type=bool)
 
     args = parser.parse_args()
     print("Model: ", args.model)
     print("Dataset: ", args.dataset)
     print("Year: ", args.year)
     print("Logs: ", args.logs)
+    print("Target: ", args.target)
+    print("Show Perturbation: ", args.show_perturbation)
     # print("Auto Download: ", args.download)
 
     config = CocoConfig()
@@ -259,6 +284,7 @@ if __name__ == '__main__':
         dataset_train,
         epochs=1,
         layers='all',
-        target_attack=args.target
+        target_attack=args.target,
+        show_perturbation=args.show_perturbation
     )
 
