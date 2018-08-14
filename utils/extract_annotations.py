@@ -13,7 +13,7 @@ FILE_NAME = "COCO_val2014_000000289343.jpg"
 
 # Open minival annotations
 with open(PATH + ANNOTATIONS) as f:
-	data = json.load(f)
+    data = json.load(f)
 
 # Copy info / licenses / type
 extract = json.loads("{}")
@@ -25,26 +25,21 @@ extract["type"] = data["type"]
 extract["images"] = []
 image_ids = []
 for img in data["images"]:
-	if img["file_name"] == FILE_NAME:
-		extract["images"].append(img)
-		image_ids.append(img["id"])
+    if img["file_name"] == FILE_NAME:
+        extract["images"].append(img)
+        image_ids.append(img["id"])
 
 # Extract all annotations for the images
 extract["annotations"] = []
 for ann in data["annotations"]:
-	if ann["image_id"] in image_ids:
-		extract["annotations"].append(ann)
+    if ann["image_id"] in image_ids:
+        extract["annotations"].append(ann)
 
 # Add Categories at bottom
 extract["categories"] = data["categories"]
 
-
 # Write output file
 with open("instances_extract.json", "w") as outfile:
-	json.dump(extract, outfile, indent=4)
-
-
+    json.dump(extract, outfile, indent=4)
 
 print("Annotations for " + str(len(extract["images"])) + " images extracted")
-
-

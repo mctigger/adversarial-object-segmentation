@@ -100,8 +100,8 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             gt_masks = gt_masks.cuda()
 
         # SETTINGS
-        steps = 10
-        max_perturbation = 15
+        steps = 100 #10
+        max_perturbation = 100 #15
 
         # Wrap in variables
         images_orig = images.clone()
@@ -237,10 +237,10 @@ if __name__ == '__main__':
     #                     help='Automatically download and unzip MS-COCO files (default=False)',
     #                     type=bool)
     parser.add_argument('--target', required=False,
-                        default=False,
-                        metavar="<True|False>",
-                        help='Perform a target attack (default=False)',
-                        type=bool)
+                        default="class",
+                        metavar="<class|localisation|segmentation|combined>",
+                        help='Perform a target attack on class, localisation, segmentation '
+                             'or a combined attack (default=class)')
     parser.add_argument('--show-perturbation', required=False,
                         default=False,
                         metavar="<True|False>",
@@ -273,8 +273,8 @@ if __name__ == '__main__':
 
     dataset_train = CocoDataset()
     #dataset_train.load_coco(args.dataset, "minival", year=args.year, auto_download=args.download)  # Uncomment to get all coco images
-    if args.target:
-        dataset_train.load_coco(args.dataset, "adversarial_attack_target", year=2014, auto_download=False)
+    if args.target is not None and args.target != "":
+        dataset_train.load_coco(args.dataset, "adversarial_attack_target_" + args.target, year=2014, auto_download=False)
     else:
         dataset_train.load_coco(args.dataset, "adversarial_attack", year=2014, auto_download=False)
     dataset_train.prepare()
