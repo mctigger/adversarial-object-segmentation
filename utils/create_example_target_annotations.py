@@ -16,6 +16,7 @@ def load_template():
 
     return data_template
 
+
 def change_localisation(data, annotation, offset_x, offset_y):
     # Add offset to all segmentation coordinates of annotation
     for coords in data["annotations"][annotation]["segmentation"]:

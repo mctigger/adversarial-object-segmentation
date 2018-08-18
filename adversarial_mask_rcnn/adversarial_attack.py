@@ -34,7 +34,7 @@ def img_to_np(img):
     return img
 
 
-def train_adversarial(model, train_dataset, epochs, layers, target_attack=False, show_perturbation=False):
+def train_adversarial(model, train_dataset, epochs, layers, target_attack=False, show_perturbation=False, use_mask=False):
     """Train the model.
     train_dataset, val_dataset: Training and validation Dataset objects.
     learning_rate: The learning rate to train with
@@ -74,10 +74,11 @@ def train_adversarial(model, train_dataset, epochs, layers, target_attack=False,
 
     for epoch in range(model.epoch + 1, epochs + 1):
         # Training
-        train_adversarial_batch(model, train_generator, target_attack=target_attack, show_perturbation=show_perturbation)
+        train_adversarial_batch(model, train_generator, target_attack=target_attack,
+                                show_perturbation=show_perturbation, use_mask=use_mask)
 
 
-def train_adversarial_batch(model, datagenerator, target_attack=False, show_perturbation=False):
+def train_adversarial_batch(model, datagenerator, target_attack=False, show_perturbation=False, use_mask=False):
     for inputs in datagenerator:
         images = inputs[0]
         image_metas = inputs[1]
@@ -100,8 +101,8 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             gt_masks = gt_masks.cuda()
 
         # SETTINGS
-        steps = 100 #10
-        max_perturbation = 100 #15
+        steps = 20
+        max_perturbation = 15
 
         # Wrap in variables
         images_orig = images.clone()
@@ -111,6 +112,9 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
         gt_class_ids = Variable(gt_class_ids)
         gt_boxes = Variable(gt_boxes)
         gt_masks = Variable(gt_masks)
+
+        # Create mask of
+        mask = create_mask(images_orig.shape, gt_boxes[0][0])
 
         for step in range(steps):
             model.zero_grad()
@@ -128,12 +132,17 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             print("step {}: loss={}".format(step, loss.data.cpu().numpy()[0]))
 
             # Calculate gradient
-            grad = images.grad * 10000
+            #grad = images.grad * 10000
+            grad = torch.sign(images.grad)
+
+            # Change part of the image in mask only if enabled
+            if use_mask:
+                grad.data = grad.data * mask
 
             # Clamp max perturbation per step
             grad = torch.clamp(grad, -max_perturbation/steps, max_perturbation/steps)
 
-            # Add/Subtract perturbation
+            # Add/Subtract perturbation based on attack
             if target_attack:
                 images_tmp = unmold_image_tensor(images.data - grad.data, model.config)
             else:
@@ -198,6 +207,24 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             plt.show()
 
 
+def create_mask(shape, bbox):
+    '''
+
+    :param shape: mask shape
+    :param bbox: (x, y, width, height)
+    :return:
+    '''
+
+    bbox = bbox.data.cpu().numpy().astype(int)
+    mask = torch.zeros(shape)
+    for i in range(3):
+        for j in range(bbox[0], bbox[2]):
+            for k in range(bbox[1], bbox[3]):
+                mask[0][i][j][k] = 1
+
+    return mask.cuda()
+
+
 def mold_image_tensor(images, config):
     """Takes RGB images with 0-255 values and subtraces
     the mean pixel and converts it to float. Expects image
@@ -241,11 +268,17 @@ if __name__ == '__main__':
                         metavar="<class|localisation|segmentation|combined>",
                         help='Perform a target attack on class, localisation, segmentation '
                              'or a combined attack (default=class)')
+    parser.add_argument('--use-mask', required=False,
+                        default=False,
+                        metavar="<True|False>",
+                        help='Use bbox of first annotation as mask (default=False)',
+                        type=bool)
     parser.add_argument('--show-perturbation', required=False,
                         default=False,
                         metavar="<True|False>",
                         help='Shows scaled perturbation (default=False)',
                         type=bool)
+
 
     args = parser.parse_args()
     print("Model: ", args.model)
@@ -254,6 +287,7 @@ if __name__ == '__main__':
     print("Logs: ", args.logs)
     print("Target: ", args.target)
     print("Show Perturbation: ", args.show_perturbation)
+    print("Use Mask: ", args.use_mask)
     # print("Auto Download: ", args.download)
 
     config = CocoConfig()
@@ -285,6 +319,7 @@ if __name__ == '__main__':
         epochs=1,
         layers='all',
         target_attack=args.target,
-        show_perturbation=args.show_perturbation
+        show_perturbation=args.show_perturbation,
+        use_mask=args.use_mask
     )
 
