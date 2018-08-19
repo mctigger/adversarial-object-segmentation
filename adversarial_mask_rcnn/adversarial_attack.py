@@ -34,7 +34,8 @@ def img_to_np(img):
     return img
 
 
-def train_adversarial(model, train_dataset, epochs, layers, target_attack=False, show_perturbation=False, use_mask=False):
+def train_adversarial(model, train_dataset, epochs, layers, target_attack=False, show_perturbation=False, use_mask=False,
+                      change_object_location=False):
     """Train the model.
     train_dataset, val_dataset: Training and validation Dataset objects.
     learning_rate: The learning rate to train with
@@ -75,10 +76,12 @@ def train_adversarial(model, train_dataset, epochs, layers, target_attack=False,
     for epoch in range(model.epoch + 1, epochs + 1):
         # Training
         train_adversarial_batch(model, train_generator, target_attack=target_attack,
-                                show_perturbation=show_perturbation, use_mask=use_mask)
+                                show_perturbation=show_perturbation, use_mask=use_mask,
+                                change_object_location=change_object_location)
 
 
-def train_adversarial_batch(model, datagenerator, target_attack=False, show_perturbation=False, use_mask=False):
+def train_adversarial_batch(model, datagenerator, target_attack=False, show_perturbation=False, use_mask=False,
+                            change_object_location=False):
     for inputs in datagenerator:
         images = inputs[0]
         image_metas = inputs[1]
@@ -101,8 +104,8 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             gt_masks = gt_masks.cuda()
 
         # SETTINGS
-        steps = 20
-        max_perturbation = 15
+        steps = 40
+        max_perturbation = 20
 
         # Wrap in variables
         images_orig = images.clone()
@@ -175,11 +178,11 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
 
         # Run detection
         image_org = unmold_image(img_to_np(images_orig[0]), model.config)
-        results = model.detect([image_org])
+        #results = model.detect([image_org])
 
         # Visualize results
-        r = results[0]
-        display_instances(image_org, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
+        #r = results[0]
+        #display_instances(image_org, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
 
         # Run detection
         image_adv = unmold_image(img_to_np(a), model.config)
@@ -205,6 +208,38 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             ax.set_title('Attacking noise (x{0:4.2f})'.format(scale_factor))
             ax.imshow(perturbation * scale_factor)
             plt.show()
+
+    # Move perturbation created for annotation 1 to different location in image
+    # TODO: Currently its added to plain image for testing purpose .
+    # TODO: And does not even work when original image is a plain grey image too.
+    if change_object_location:
+        image_tmp = image_adv.astype(np.int16)
+        perturbation = image_tmp - image_org
+
+        # Cut fake object from BBox size of first annotation
+        bbox = gt_boxes[0][0].data.cpu().numpy().astype(int)
+        fake_object = perturbation[bbox[0]:bbox[2], bbox[1]:bbox[3], :]
+
+        # Create plain grey = 127 image
+        plain = np.zeros([512, 512, 3]) + 127
+
+        # Add fake_object to plain image
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        start_x = bbox[0]
+        start_y = bbox[1]
+        plain[start_x:start_x + width, start_y:start_y + height, :] = fake_object
+        plain = plain.astype(np.uint8)
+
+        # Run detection
+        try:
+            results = model.detect([plain])
+
+            # Visualize results
+            r = results[0]
+            display_instances(plain, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
+        except IndexError:
+            print("No detection found")
 
 
 def create_mask(shape, bbox):
@@ -278,6 +313,12 @@ if __name__ == '__main__':
                         metavar="<True|False>",
                         help='Shows scaled perturbation (default=False)',
                         type=bool)
+    parser.add_argument('--change-object-location', required=False,
+                        default=False,
+                        metavar="<True|False>",
+                        help='Moves perturbation created for first annotation to a different place in the image'
+                             ' (default=False)',
+                        type=bool)
 
 
     args = parser.parse_args()
@@ -288,6 +329,7 @@ if __name__ == '__main__':
     print("Target: ", args.target)
     print("Show Perturbation: ", args.show_perturbation)
     print("Use Mask: ", args.use_mask)
+    print("Change object location: ", args.change_object_location)
     # print("Auto Download: ", args.download)
 
     config = CocoConfig()
