@@ -3,4 +3,4 @@
 	url = https://github.com/cocodataset/cocoapi.git
 [submodule "modules/pytorch_mask_rcnn"]
 	path = modules/pytorch_mask_rcnn
-	url = https://github.com/multimodallearning/pytorch-mask-rcnn.git
+	url = https://github.com/AdVetter/pytorch_mask_rcnn.git
