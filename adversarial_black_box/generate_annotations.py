@@ -34,6 +34,9 @@ IMAGE_DIR = os.path.join(ROOT_DIR, "data/test2014")
 # Log file for annotation errors
 LOG_FILE = os.path.join(ROOT_DIR, "logs/annotation_errors.log")
 
+# Split 0.8 = 80/20 train/val split
+DATA_SPLIT = 0.8
+
 class InferenceConfig(coco.CocoConfig):
     # Set batch size to 1 since we'll be running inference on
     # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
@@ -77,9 +80,15 @@ annotation_errors = {}
 
 template_path = os.path.join(ROOT_DIR, "data/annotations/instances_.template.json")
 with open(template_path) as f:
-    data = json.load(f)
+    data_train = json.load(f)
+
+with open(template_path) as f:
+    data_val = json.load(f)
 
     annotation_id = 0
+    num_images = len([name for name in os.listdir(IMAGE_DIR) if os.path.isfile(os.path.join(IMAGE_DIR, name))])
+
+    print(str(num_images) + " images found")
 
     for i, image_file in enumerate(sorted(os.listdir(IMAGE_DIR))):
         print("{}: working on image {}".format(i, image_file))
@@ -89,7 +98,11 @@ with open(template_path) as f:
 
         image_id = int(image_file.split('_')[-1][:-4])
         img_data = pycococreatortools.create_image_info(image_id, image_file, image_size)
-        data["images"].append(img_data)
+        
+        if i < num_images * DATA_SPLIT:
+            data_train["images"].append(img_data)
+        else:
+            data_val["images"].append(img_data)
 
         # Run detection
         try:
@@ -126,16 +139,21 @@ with open(template_path) as f:
                 annotation_id, image_id, category_info, m, image_size, tolerance=2)
             annotation_id = annotation_id + 1
 
-            data["annotations"].append(ann_data)
 
-        # https://patrickwasp.com/create-your-own-coco-style-dataset/
-        category_info = {'id': result["class_ids"][i].item(), 'is_crowd': 0}
+            if i < num_images * DATA_SPLIT:
+                 data_train["annotations"].append(ann_data)
+            else:
+                 data_val["annotations"].append(ann_data)
 
 
-# Write output file
-out_path = os.path.join(ROOT_DIR, "data/annotations/instances_test2014.json")
+# Write output files
+out_path = os.path.join(ROOT_DIR, "data/annotations/instances_test_train2014.json")
 with open(out_path, "w+") as outfile:
-    json.dump(data, outfile, indent=4)
+    json.dump(data_train, outfile, indent=4)
+
+out_path = os.path.join(ROOT_DIR, "data/annotations/instances_test_val2014.json")
+with open(out_path, "w+") as outfile:
+    json.dump(data_val, outfile, indent=4)
 
 # Write error file
 with open(LOG_FILE, "w+") as outfile:
