@@ -2,18 +2,14 @@ import os
 import sys
 
 sys.path.append('modules/pytorch_mask_rcnn')
-
+#sys.path.append('modules/cocoapi/PythonAPI/pycocotools')
 
 import skimage.io
-
-
 import coco
 from pycococreatortools import pycococreatortools
 import model as modellib
 import json
-
 import torch
-
 import matplotlib.pyplot as plt
 import visualize
 
@@ -35,6 +31,8 @@ COCO_MODEL_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.pth")
 # Directory of images to run detection on
 IMAGE_DIR = os.path.join(ROOT_DIR, "data/test2014")
 
+# Log file for annotation errors
+LOG_FILE = os.path.join(ROOT_DIR, "logs/annotation_errors.log")
 
 class InferenceConfig(coco.CocoConfig):
     # Set batch size to 1 since we'll be running inference on
@@ -75,6 +73,7 @@ class_names = ['BG', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
 
 
 detections = []
+annotation_errors = {}
 
 template_path = os.path.join(ROOT_DIR, "data/annotations/instances_.template.json")
 with open(template_path) as f:
@@ -95,9 +94,14 @@ with open(template_path) as f:
         # Run detection
         try:
             results = model.detect([image])
-
         # Continue if no detection was made
         except IndexError:
+            print("No detection found")
+            annotation_errors[image_file] = "No detection found"
+            continue
+        except:
+            print("Error on image annotation")
+            annotation_errors[image_file] = "Error on image annotation"
             continue
 
         result = results[0]
@@ -133,3 +137,9 @@ out_path = os.path.join(ROOT_DIR, "data/annotations/instances_test2014.json")
 with open(out_path, "w+") as outfile:
     json.dump(data, outfile, indent=4)
 
+# Write error file
+with open(LOG_FILE, "w+") as outfile:
+    for k, v in annotation_errors.items():
+        outfile.write(str(k) + ': ' + str(v) + '\n')
+
+print("Errors logged to: '" + LOG_FILE + "'")
