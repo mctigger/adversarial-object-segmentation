@@ -78,6 +78,7 @@ class_names = ['BG', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
 detections = []
 annotation_errors = {}
 
+# Get template
 template_path = os.path.join(ROOT_DIR, "data/annotations/instances_.template.json")
 with open(template_path) as f:
     data_train = json.load(f)
@@ -85,65 +86,64 @@ with open(template_path) as f:
 with open(template_path) as f:
     data_val = json.load(f)
 
-    annotation_id = 0
-    num_images = len([name for name in os.listdir(IMAGE_DIR) if os.path.isfile(os.path.join(IMAGE_DIR, name))])
+# Loop all files and annotate them
+print(str(num_images) + " images found")
+annotation_id = 0
+num_images = len([name for name in os.listdir(IMAGE_DIR) if os.path.isfile(os.path.join(IMAGE_DIR, name))])
+for i, image_file in enumerate(sorted(os.listdir(IMAGE_DIR))):
+    print("{}: working on image {}".format(i, image_file))
+    image = skimage.io.imread(os.path.join(IMAGE_DIR, image_file))
+    a, b = image.shape[0:2]
+    image_size = b, a
 
-    print(str(num_images) + " images found")
+    image_id = int(image_file.split('_')[-1][:-4])
+    img_data = pycococreatortools.create_image_info(image_id, image_file, image_size)
 
-    for i, image_file in enumerate(sorted(os.listdir(IMAGE_DIR))):
-        print("{}: working on image {}".format(i, image_file))
-        image = skimage.io.imread(os.path.join(IMAGE_DIR, image_file))
-        a, b = image.shape[0:2]
-        image_size = b, a
+    if i < num_images * DATA_SPLIT:
+        data_train["images"].append(img_data)
+    else:
+        data_val["images"].append(img_data)
 
-        image_id = int(image_file.split('_')[-1][:-4])
-        img_data = pycococreatortools.create_image_info(image_id, image_file, image_size)
-        
+    # Run detection
+    try:
+        results = model.detect([image])
+    # Continue if no detection was made
+    except IndexError:
+        print("No detection found")
+        annotation_errors[image_file] = "No detection found"
+        continue
+    except:
+        print("Error on image annotation")
+        annotation_errors[image_file] = "Error on image annotation"
+        continue
+
+    result = results[0]
+
+    # Visualize results
+    if VISUALIZE_DETECTIONS:
+        visualize.display_instances(image, result['rois'], result['masks'], result['class_ids'],
+                                    class_names, result['scores'])
+        plt.show()
+
+    # Loop for each annotation
+    for j in range(len(result["class_ids"])):
+        # Get mask
+        masks = result["masks"]
+        m = masks[:, :, j]
+
+        # https://patrickwasp.com/create-your-own-coco-style-dataset/
+        category_info = {'id': result["class_ids"][j].item(), 'is_crowd': 0}
+
+        # Create annotation info
+        ann_data = pycococreatortools.create_annotation_info(
+            annotation_id, image_id, category_info, m, image_size, tolerance=2)
+        annotation_id = annotation_id + 1
+
+
         if i < num_images * DATA_SPLIT:
-            data_train["images"].append(img_data)
+             data_train["annotations"].append(ann_data)
         else:
-            data_val["images"].append(img_data)
-
-        # Run detection
-        try:
-            results = model.detect([image])
-        # Continue if no detection was made
-        except IndexError:
-            print("No detection found")
-            annotation_errors[image_file] = "No detection found"
-            continue
-        except:
-            print("Error on image annotation")
-            annotation_errors[image_file] = "Error on image annotation"
-            continue
-
-        result = results[0]
-
-        # Visualize results
-        if VISUALIZE_DETECTIONS:
-            visualize.display_instances(image, result['rois'], result['masks'], result['class_ids'],
-                                        class_names, result['scores'])
-            plt.show()
-            
-        # Loop for each annotation
-        for i in range(len(result["class_ids"])):
-            # Get mask
-            masks = result["masks"]
-            m = masks[:, :, i]
-
-            # https://patrickwasp.com/create-your-own-coco-style-dataset/
-            category_info = {'id': result["class_ids"][i].item(), 'is_crowd': 0}
-
-            # Create annotation info
-            ann_data = pycococreatortools.create_annotation_info(
-                annotation_id, image_id, category_info, m, image_size, tolerance=2)
-            annotation_id = annotation_id + 1
-
-
-            if i < num_images * DATA_SPLIT:
-                 data_train["annotations"].append(ann_data)
-            else:
-                 data_val["annotations"].append(ann_data)
+             data_val["annotations"].append(ann_data)
 
 
 # Write output files

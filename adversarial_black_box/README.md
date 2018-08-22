@@ -11,13 +11,14 @@ This experiment creates an blackbox attack on the pretrained COCO Mask R-CNN mod
 
 ## Requirements
 Install environment of root project.
-Also the COCO testset has to be downloaded an put into data folder.
+Also the COCO 2014 test dataset has to be downloaded an put into data folder.
 
 ## Usage
 ```bash
 $ source activate adverserial-object-segmentation
-$ python generate_annotations.py
-$ ./train_whitebox.sh
-$ # btc..
+$ python generate_annotations.py # Creates train and validation annotation files
+$ python split_images.py # Split imageset based on annoations
+$ ./train_whitebox.sh # Trains new model based on previously annotated images
+$ # tbc..
 ```
 
