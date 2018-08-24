@@ -8,8 +8,8 @@ import os
 from pprint import pprint
 
 PATH = "/disk/no_backup/mlprak4/adverserial-object-segmentation/data/"
-ANNOTATIONS = "annotations/instances_minival2014.json"
-FILE_NAME = "COCO_val2014_000000289343.jpg"
+ANNOTATIONS = "annotations/instances_val2014.json"
+FILE_NAME = "COCO_val2014_000000083277.jpg"
 
 # Open minival annotations
 with open(PATH + ANNOTATIONS) as f:
@@ -19,7 +19,7 @@ with open(PATH + ANNOTATIONS) as f:
 extract = json.loads("{}")
 extract["info"] = data["info"]
 extract["licenses"] = data["licenses"]
-extract["type"] = data["type"]
+#extract["type"] = data["type"]
 
 # Extract all image information
 extract["images"] = []

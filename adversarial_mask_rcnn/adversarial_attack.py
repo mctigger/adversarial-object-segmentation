@@ -11,7 +11,9 @@ from torch.autograd.gradcheck import zero_gradients
 from model import Dataset, unmold_image, MaskRCNN, compute_losses
 from visualize import display_instances
 from coco import CocoDataset, CocoConfig
-
+import skimage.io
+import time
+import pathlib
 
 # Root directory of the project
 ROOT_DIR = os.getcwd()
@@ -34,7 +36,8 @@ def img_to_np(img):
     return img
 
 
-def train_adversarial(model, train_dataset, epochs, layers, target_attack=False, show_perturbation=False, use_mask=False):
+def train_adversarial(model, train_dataset, epochs, layers, target_attack=False, show_perturbation=False, use_mask=False,
+                      save_adversarials_to_logs=False):
     """Train the model.
     train_dataset, val_dataset: Training and validation Dataset objects.
     learning_rate: The learning rate to train with
@@ -75,10 +78,12 @@ def train_adversarial(model, train_dataset, epochs, layers, target_attack=False,
     for epoch in range(model.epoch + 1, epochs + 1):
         # Training
         train_adversarial_batch(model, train_generator, target_attack=target_attack,
-                                show_perturbation=show_perturbation, use_mask=use_mask)
+                                show_perturbation=show_perturbation, use_mask=use_mask,
+                                save_adversarials_to_logs=save_adversarials_to_logs)
 
 
-def train_adversarial_batch(model, datagenerator, target_attack=False, show_perturbation=False, use_mask=False):
+def train_adversarial_batch(model, datagenerator, target_attack=False, show_perturbation=False, use_mask=False,
+                            save_adversarials_to_logs=False):
     for inputs in datagenerator:
         images = inputs[0]
         image_metas = inputs[1]
@@ -101,8 +106,8 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             gt_masks = gt_masks.cuda()
 
         # SETTINGS
-        steps = 20
-        max_perturbation = 15
+        steps = 10
+        max_perturbation = 255
 
         # Wrap in variables
         images_orig = images.clone()
@@ -177,7 +182,7 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
         image_org = unmold_image(img_to_np(images_orig[0]), model.config)
         results = model.detect([image_org])
 
-        # Visualize results
+        # Visualize original
         r = results[0]
         display_instances(image_org, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
 
@@ -185,9 +190,17 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
         image_adv = unmold_image(img_to_np(a), model.config)
         results = model.detect([image_adv])
 
-        # Visualize results
+        # Visualize adversarial
         r = results[0]
         display_instances(image_adv, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'])
+
+        if save_adversarials_to_logs:
+            path = os.path.join(DEFAULT_LOGS_DIR, "adversarial_examples")
+            pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+
+            path = os.path.join(path, "adversarial_example_" + str(int(time.time())) + ".jpg")
+            skimage.io.imsave(path, image_adv)
+            print("Adversarial exaple saved to: " + path)
 
         # Visualize perturbation
         if show_perturbation:
@@ -320,6 +333,7 @@ if __name__ == '__main__':
         layers='all',
         target_attack=args.target,
         show_perturbation=args.show_perturbation,
-        use_mask=args.use_mask
+        use_mask=args.use_mask,
+        save_adversarials_to_logs=False
     )
 
