@@ -12,9 +12,38 @@ import torch
 import torch.distributions as td
 
 from skimage.measure import compare_ssim as ssim
-from showprogress import showprogress
+from tqdm import trange
 from torch.autograd import Variable
 
+import sys
+sys.path.append('modules/pytorch_mask_rcnn')
+
+
+import matplotlib.pyplot as plt
+import visualize
+
+
+# Show detections (For debug purpose)
+VISUALIZE_DETECTIONS = False
+
+# COCO Class names
+# Index of the class in the list is its ID. For example, to get ID of
+# the teddy bear class, use: class_names.index('teddy bear')
+class_names = ['BG', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
+               'bus', 'train', 'truck', 'boat', 'traffic light',
+               'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird',
+               'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear',
+               'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie',
+               'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+               'kite', 'baseball bat', 'baseball glove', 'skateboard',
+               'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
+               'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+               'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
+               'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed',
+               'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
+               'keyboard', 'cell phone', 'microwave', 'oven', 'toaster',
+               'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors',
+               'teddy bear', 'hair drier', 'toothbrush']
 
 def get_mutation(shape, alpha, delta, bernoulli):
     '''
@@ -68,7 +97,7 @@ def crossover(parents, fitness, population):
     return children
 
 
-def get_fitness(population, target, net, mse):
+def get_fitness(population, target, net):
     '''
     Compute the fitness score for each example in population.
 
@@ -88,11 +117,30 @@ def get_fitness(population, target, net, mse):
 
     for i in range(N):
         # obtain candidate descriptors from the black box [N x ddim]
-        descP[i] = torch.cuda.FloatTensor(net.submit(population[i].cpu().numpy()[None, :])[0])
+
+        try:
+            img = population[i].permute(1, 2, 0)
+            img = img.clamp(0, 1).cpu().numpy()
+
+            img = img * 255  # Convert back to 0, 255 range
+            img = img.astype(np.uint8)
+            result = net.detect([img])[0]
+            res = result['scores'].sum().item()
+
+            # Visualize results
+            if VISUALIZE_DETECTIONS or res < 2:
+                visualize.display_instances(img, result['rois'], result['masks'], result['class_ids'],
+                                            class_names, result['scores'])
+                plt.show()
+
+        except IndexError:
+            res = 0
+            print("No detections found")
+
+        descP[i] = torch.cuda.FloatTensor([res])
     t = target.expand(N, -1)  # [N x ddim]
-    # compute mse(candidate, target) for every candidate
-    fitness = mse(Variable(descP), Variable(t)).mean(1)
-    return fitness.data
+
+    return descP[:, 0]
 
 
 def attack(x, target, delta, alpha, p, N, G, net):
@@ -113,7 +161,7 @@ def attack(x, target, delta, alpha, p, N, G, net):
         Pcurrent: evolved population of adversarial examples of the original `x`
             targeted with `target` descriptor to attack black box model with.
     '''
-    mse = torch.nn.MSELoss(reduce=False).cuda()
+    # mse = torch.nn.MSELoss(reduce=False).cuda()
     bernoulli = td.Bernoulli(p)
     softmax = torch.nn.Softmax(0).cuda()
     # generate starting population
@@ -128,10 +176,17 @@ def attack(x, target, delta, alpha, p, N, G, net):
     lo = x.min() - alpha[0] * delta[0]
     hi = x.max() + alpha[0] * delta[0]
 
+    # init log
+    log = []
+
     # start evolution
-    for g in showprogress(total=G):
+    t = trange(G)
+    for g in t:
         # measure fitness with MSE between descriptors
-        fitness = get_fitness(Pcurrent, target, net, mse)  # [N]
+        fitness = get_fitness(Pcurrent, target, net)  # [N]
+
+        # Log fitness
+        log.append(fitness)
 
         # check SSIM
         ssimm = np.zeros(N)
@@ -139,7 +194,16 @@ def attack(x, target, delta, alpha, p, N, G, net):
             ssimm[i] = ssim(x.squeeze().permute(1, 2, 0).cpu().numpy(),
                             Pcurrent[i].permute(1, 2, 0).cpu().numpy(),
                             multichannel=True)  # [N]
-        survivors = ssimm >= 0.95  # [N]
+        #survivors = ssimm >= 0.95  # [N]
+        survivors = ssimm >= 0.40  # [N]
+
+        # Update description
+        t.set_description("Avg fitness: %f; avg ssimm %f" % (fitness.mean(), ssimm.mean()))
+        t.refresh()
+
+        # "Save" first output in console to compare
+        if g == 1:
+            print("\n")
 
         if survivors.sum() == 0:
             print('All candidates died.')
@@ -151,7 +215,9 @@ def attack(x, target, delta, alpha, p, N, G, net):
         Pnext[0] = Pcurrent[best]
 
         # generate next population
-        probs = softmax(Variable(torch.cuda.FloatTensor(survivors)) * Variable(fitness)).data
+        # TODO: not survivors are ignored atm
+        #probs = softmax(Variable(torch.cuda.FloatTensor(survivors)) * Variable(fitness)).data
+        probs = softmax(Variable(-fitness)).data
         cat = td.Categorical(probs[None, :].expand(2 * (N - 1), -1))
         parents = cat.sample()  # sample 2 parents per child, total number of children is N-1
         children = crossover(parents, fitness, Pcurrent)  # [(N-1) x nchannels x h x w]
@@ -162,7 +228,7 @@ def attack(x, target, delta, alpha, p, N, G, net):
         Pcurrent = Pnext  # update current generation
         # clip to ensure the distance constraints
         Pcurrent = torch.clamp(Pcurrent, lo, hi)
-    return Pcurrent
+    return Pcurrent, log
 
 
 
