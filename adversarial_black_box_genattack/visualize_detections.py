@@ -105,7 +105,7 @@ show_and_save_detection(original_file_path)
 # All images from the images folder
 file_names = next(os.walk(IMAGE_DIR))[2]
 for file_name in file_names:
-    if not file_name.endswith(".jpg"):
+    if not file_name.endswith(".png"):
         continue
 
     file_path = os.path.join(IMAGE_DIR, file_name)

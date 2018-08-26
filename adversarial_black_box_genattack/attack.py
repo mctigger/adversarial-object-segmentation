@@ -110,7 +110,7 @@ pathlib.Path(path).mkdir(parents=True, exist_ok=True)
 
 # Save images
 for i in range(len(image_adversarials)):
-    path_img = os.path.join(path, "adv_example_" + str(i) + ".jpg")
+    path_img = os.path.join(path, "adv_example_" + str(i) + ".png")
     skimage.io.imsave(path_img, torch2numpy(image_adversarials[i]))
     print("Adversarial example saved to: " + path_img)
 
