@@ -77,17 +77,21 @@ def torch2numpy(img):
 
 # Load and transform image
 #image = skimage.io.imread(os.path.join(IMAGE_DIR, "COCO_val2014_000000083277.jpg"))
-image = skimage.io.imread(os.path.join(IMAGE_DIR, "COCO_val2014_000000289343.jpg"))
+#image = skimage.io.imread(os.path.join(IMAGE_DIR, "COCO_val2014_000000289343.jpg"))
+img_path = os.path.join(IMAGE_DIR, sys.argv[1])
+image = skimage.io.imread(img_path)
 input_img = transform(image)
 input_img = input_img.cuda(async=True)
 
 N = 6  # size of population to evolve
-G = 500  # number of generations to evolve through
-p = torch.cuda.FloatTensor([0.001])
+G = 40000  # number of generations to evolve through
+#p = torch.cuda.FloatTensor([0.0001])
+p = torch.cuda.FloatTensor([float(sys.argv[2])])
 alpha = torch.cuda.FloatTensor([1.])
 delta = torch.cuda.FloatTensor([0.05])
 
 target = torch.cuda.FloatTensor([0])
+
 
 # Show detections of original image
 if VISUALIZE_DETECTIONS:
@@ -123,3 +127,11 @@ with open(path_fitness, 'w') as f:
         writer.writerow(row.cpu().numpy().tolist())
 
 print("Saved fitness log to : " + path_fitness)
+
+
+# Save Config
+path_conf = os.path.join(path, "conf.cfg")
+with open(path_conf, 'w') as f:
+    f.write("input_img: %s\ndelta %f\nalpha %f\np %f\nN %f\nG %f" % (img_path, delta, alpha, p, N, G))
+
+print("Saved cfg  to : " + path_conf)

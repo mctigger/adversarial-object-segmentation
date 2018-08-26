@@ -128,7 +128,7 @@ def get_fitness(population, target, net):
             res = result['scores'].sum().item()
 
             # Visualize results
-            if VISUALIZE_DETECTIONS or res < 2:
+            if VISUALIZE_DETECTIONS:
                 visualize.display_instances(img, result['rois'], result['masks'], result['class_ids'],
                                             class_names, result['scores'])
                 plt.show()
@@ -207,7 +207,11 @@ def attack(x, target, delta, alpha, p, N, G, net):
 
         if survivors.sum() == 0:
             print('All candidates died.')
-            return Pprev
+            return Pprev, log
+
+        # End
+        if g == G - 1:
+            return Pcurrent, log
 
         # choose the best fit candidate among population
         _, best = torch.min(fitness, 0)  # get idx of the best fitted candidate
