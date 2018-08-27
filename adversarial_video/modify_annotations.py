@@ -4,9 +4,10 @@
 
 import json
 import math
+import random
 
-PATH = "/disk/no_backup/mlprak4/adverserial-object-segmentation/data/annotations/"
-TEMPLATE = "instances_adversarial_attack_target_XXX2014.json.template"
+PATH = "./data/video/annotations/"
+TEMPLATE = "instances_video2014.json"
 
 
 # Open File
@@ -61,9 +62,7 @@ def bloat_segmentation(data, annotation, factor=2):
         max_x = max(max_x, max(coords[0::2]))
         max_y = max(max_y, max(coords[1::2]))
 
-    bbox = data["annotations"][annotation]["bbox"]
-    bbox[0] = min_x
-    bbox[1] = min_y
+    bbox = data["annotations"][annotation][m
     bbox[1] = max_x - min_x
     bbox[2] = max_y - min_y
 
@@ -78,25 +77,23 @@ def save_as(data, path):
 
 
 if __name__ == '__main__':
-    # Change first annotation to airplane
     data = load_template()
-    data = change_class(data, 0, 5)  # 5 = airplane
-    save_as(data, PATH + "instances_adversarial_attack_target_class2014.json")
+    for i in range(len(data["annotations"])):
+        image_id = data["annotations"][i]['image_id']
+        if image_id < 200:
+            data = change_class(data, i, image_id // 10 % 80)
 
-    # Change first annotation offset
-    data = load_template()
-    data = change_localisation(data, 0, offset_x=0, offset_y=-200)
-    save_as(data, PATH + "instances_adversarial_attack_target_localisation2014.json")
+        if image_id > 200:
+            data = change_localisation(data, i, math.sin(image_id / 20) * 100, math.sin(image_id / 10) * 100)
 
-    # Change first annotation segmentation size
-    data = load_template()
-    data = bloat_segmentation(data, 0, factor=4)
-    save_as(data, PATH + "instances_adversarial_attack_target_segmentation2014.json")
+    index = 0
+    for i in range(len(data["annotations"])):
+        image_id = data["annotations"][index]['image_id']
+        if image_id < 100 and random.random() > 0.5:
+            del data["annotations"][index]
+            print("deleted")
+        else:
+            index += 1
 
-    # Change first annotation class, offset and size
-    data = load_template()
-    data = change_class(data, 0, 5)  # 5 = airplane
-    data = change_localisation(data, 0, offset_x=0, offset_y=-200)
-    data = bloat_segmentation(data, 0, factor=4)
-    save_as(data, PATH + "instances_adversarial_attack_target_combined2014.json")
+    save_as(data, PATH + "instances_adversarial_video2014.json")
 
