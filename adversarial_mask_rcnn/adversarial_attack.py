@@ -67,8 +67,8 @@ def train_adversarial(model, train_dataset, epochs, layers, target_attack=False,
         layers = layer_regex[layers]
 
     # Data generators
-    train_set = Dataset(train_dataset, model.config, augment=True)
-    train_generator = torch.utils.data.DataLoader(train_set, batch_size=1, shuffle=True, num_workers=4)
+    train_set = Dataset(train_dataset, model.config, augment=False)
+    train_generator = torch.utils.data.DataLoader(train_set, batch_size=1, shuffle=False, num_workers=4)
 
     model.set_trainable(layers)
 
@@ -101,7 +101,7 @@ def train_adversarial_batch(model, datagenerator, target_attack=False, show_pert
             gt_masks = gt_masks.cuda()
 
         # SETTINGS
-        steps = 20
+        steps = 50
         max_perturbation = 15
 
         # Wrap in variables
