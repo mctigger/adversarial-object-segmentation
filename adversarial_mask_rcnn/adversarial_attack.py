@@ -67,7 +67,7 @@ def train_adversarial(model, train_dataset, epochs, layers, target_attack=False,
         layers = layer_regex[layers]
 
     # Data generators
-    train_set = Dataset(train_dataset, model.config, augment=True)
+    train_set = Dataset(train_dataset, model.config, augment=False)
     train_generator = torch.utils.data.DataLoader(train_set, batch_size=1, shuffle=True, num_workers=4)
 
     model.set_trainable(layers)

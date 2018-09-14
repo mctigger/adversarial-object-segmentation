@@ -68,7 +68,7 @@ class_names = ['BG', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
 
 # Directory of images to run detection on
 #IMAGE_DIR = os.path.join(ROOT_DIR, "images")
-IMAGE_DIR = "/disk/vanishing_data/mlprak4/mask-r-cnn_logs/adversarial_examples/20180826_132929/"
+IMAGE_DIR = "/disk/vanishing_data/mlprak4/mask-r-cnn_logs/adversarial_examples/20180827_155927/"
 
 # Path to save detections
 DETECTIONS_PATH = os.path.join(IMAGE_DIR, "detections")
@@ -80,17 +80,25 @@ def show_and_save_detection(file_path):
     print(file_path)
 
     # Run detection
-    results = model.detect([image])
+    try:
+        results = model.detect([image])
+    except IndexError:
+        results = None
 
     # Visualize results
-    r = results[0]
+    try:
+        r = results[0]
+    except TypeError as e:
+        print("No detection found")
+        return
 
     print(str(len(r['scores'])) + " objects detected")
-    fig = visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'],
-                                class_names, r['scores'])
+    plot = visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'],
+                                       class_names, r['scores'])
+    fig = plot.gcf()
 
     detections_name = file_path.split("/")[-1][:-4] + "_detections.png"
-    detections_path = file_path = os.path.join(DETECTIONS_PATH, detections_name)
+    detections_path = os.path.join(DETECTIONS_PATH, detections_name)
     fig.savefig(detections_path, bbox_inches='tight')
 
 
