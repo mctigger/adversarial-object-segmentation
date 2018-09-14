@@ -23,7 +23,7 @@ ROOT_DIR = os.getcwd()
 DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 
 DATASET_DIR = os.path.join(ROOT_DIR, "data")
-TARGET = "whitebox"
+TARGET = "class"
 SHOW_PERTURBATION = True
 USE_MASK = False
 
