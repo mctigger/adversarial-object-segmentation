@@ -19,6 +19,6 @@ $ source activate adverserial-object-segmentation
 $ python generate_annotations.py # Creates train and validation annotation files
 $ python split_images.py # Split imageset based on annoations
 $ ./train_whitebox.sh # Trains new model based on previously annotated images
-$ # tbc..
+$ python generate_adversarial_examples.py # Generates adversarial example and shows result of substitute and blackbox
 ```
 
