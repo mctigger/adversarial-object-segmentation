@@ -107,5 +107,3 @@ dependencies:
   - pytorch=0.3.1
   - pip:
     - torch==0.3.1.post2
-prefix: /home/tim/anaconda3/envs/adversarial-object-segmentation
-
