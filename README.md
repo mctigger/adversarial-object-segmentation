@@ -1,5 +1,7 @@
 # adversarial-attacks-on-mask-rcnn
 
+Sourcecode to the ML-Praktikum at KIT (SoSe 2018) by Tim Joseph, Adrian Vetter and Qi Zhao.
+
 ## Installation
 
 Problems first: May need CUDA installation for `sh install.sh` because CUDA kernels get compiled
